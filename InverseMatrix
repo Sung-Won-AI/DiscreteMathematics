@@ -49,8 +49,7 @@ def inverse_via_adjugate(A):
     detA = determinant(A)
     if abs(detA) < EPS:
         raise ValueError("역행렬이 존재하지 않습니다 (determinant = 0).")
-    C = cofactor_matrix(A)
-    Adj = transpose(C)
+    Adj = transpose(cofactor_matrix(A))
     n = len(A)
     return [[Adj[i][j] / detA for j in range(n)] for i in range(n)]
 
@@ -75,6 +74,8 @@ def inverse_via_gauss_jordan(A):
     return [row[n:] for row in M]
 
 def matrices_equal(A, B, tol=1e-7):
+    if A is None or B is None:
+        return False
     if len(A) != len(B) or len(A[0]) != len(B[0]):
         return False
     n, m = len(A), len(A[0])
@@ -84,28 +85,149 @@ def matrices_equal(A, B, tol=1e-7):
                 return False
     return True
 
+def lu_decompose_partial_pivot(A):
+    n = len(A)
+    U = deepcopy(A)
+    L = [[0.0]*n for _ in range(n)]
+    P = list(range(n))
+    swaps = 0
+    for k in range(n):
+        pivot_row = max(range(k, n), key=lambda r: abs(U[r][k]))
+        if abs(U[pivot_row][k]) < EPS:
+            raise ValueError("역행렬이 존재하지 않습니다 (LU 분해 피벗=0).")
+        if pivot_row != k:
+            U[k], U[pivot_row] = U[pivot_row], U[k]
+            P[k], P[pivot_row] = P[pivot_row], P[k]
+            for c in range(k):
+                L[k][c], L[pivot_row][c] = L[pivot_row][c], L[k][c]
+            swaps += 1
+        L[k][k] = 1.0
+        for i in range(k+1, n):
+            L[i][k] = U[i][k] / U[k][k]
+            factor = L[i][k]
+            for j in range(k, n):
+                U[i][j] -= factor * U[k][j]
+    return L, U, P, swaps
+
+def apply_permutation_to_matrix_rows(M, P):
+    return [M[p] for p in P]
+
+def forward_substitution_unit_lower(L, B):
+    n = len(L)
+    m = len(B[0])
+    Y = [[0.0]*m for _ in range(n)]
+    for i in range(n):
+        for j in range(m):
+            s = B[i][j]
+            for k in range(i):
+                s -= L[i][k] * Y[k][j]
+            Y[i][j] = s
+    return Y
+
+def back_substitution_upper(U, Y):
+    n = len(U)
+    m = len(Y[0])
+    X = [[0.0]*m for _ in range(n)]
+    for i in reversed(range(n)):
+        for j in range(m):
+            s = Y[i][j]
+            for k in range(i+1, n):
+                s -= U[i][k] * X[k][j]
+            if abs(U[i][i]) < EPS:
+                raise ValueError("역행렬이 존재하지 않습니다 (U 대각=0).")
+            X[i][j] = s / U[i][i]
+    return X
+
+def eye(n):
+    return [[1.0 if i==j else 0.0 for j in range(n)] for i in range(n)]
+
+def inverse_via_lu(A):
+    n = len(A)
+    L, U, P, _ = lu_decompose_partial_pivot(A)
+    I = eye(n)
+    B = apply_permutation_to_matrix_rows(I, P)
+    Y = forward_substitution_unit_lower(L, B)
+    X = back_substitution_upper(U, Y)
+    return X
+
+def determinant_via_lu(A):
+    _, U, _, swaps = lu_decompose_partial_pivot(A)
+    prod = 1.0
+    for i in range(len(U)):
+        prod *= U[i][i]
+    return (-1.0 if (swaps % 2) else 1.0) * prod
+
+def determinant_via_gauss_jordan(A):
+    n = len(A)
+    M = deepcopy(A)
+    swaps = 0
+    det = 1.0
+    for i in range(n):
+        pivot_row = max(range(i, n), key=lambda r: abs(M[r][i]))
+        if abs(M[pivot_row][i]) < EPS:
+            return 0.0
+        if pivot_row != i:
+            M[i], M[pivot_row] = M[pivot_row], M[i]
+            swaps += 1
+        pivot = M[i][i]
+        det *= pivot
+        for r in range(i+1, n):
+            f = M[r][i] / pivot
+            for c in range(i, n):
+                M[r][c] -= f * M[i][c]
+    return (-1.0 if (swaps % 2) else 1.0) * det
+
 def main():
     try:
         A = input_matrix()
     except Exception as e:
         print(f"입력 오류: {e}")
         return
+
     try:
-        inv1 = inverse_via_adjugate(A)
-        print_matrix(inv1, "행렬식(수반행렬) 방식 역행렬")
+        inv_adj = inverse_via_adjugate(A)
+        print_matrix(inv_adj, "행렬식(수반행렬) 방식 역행렬")
     except Exception as e:
-        inv1 = None
+        inv_adj = None
         print(f"[행렬식 방식] 실패: {e}")
+
     try:
-        inv2 = inverse_via_gauss_jordan(A)
-        print_matrix(inv2, "가우스-조던 소거법 역행렬")
+        inv_gj = inverse_via_gauss_jordan(A)
+        print_matrix(inv_gj, "가우스-조던 소거법 역행렬")
     except Exception as e:
-        inv2 = None
+        inv_gj = None
         print(f"[가우스-조던 방식] 실패: {e}")
-    if inv1 is not None and inv2 is not None:
-        print("\n✅ 두 방법으로 얻은 역행렬이 동일합니다." if matrices_equal(inv1, inv2, tol=1e-7) else "\n⚠️ 두 방법의 결과가 서로 다릅니다.")
-    else:
-        print("\n비교 불가: 한 방법 이상에서 역행렬을 구하지 못했습니다.")
+
+    try:
+        inv_lu = inverse_via_lu(A)
+        print_matrix(inv_lu, "LU 분해 기반 역행렬")
+    except Exception as e:
+        inv_lu = None
+        print(f"[LU 방식] 실패: {e}")
+
+    try:
+        det_adj = determinant(A)
+        det_gj = determinant_via_gauss_jordan(A)
+        det_lu = determinant_via_lu(A)
+        print(f"\n행렬식(수반행렬) 방식 det: {det_adj:.10f}")
+        print(f"가우스-조던 기반 det:      {det_gj:.10f}")
+        print(f"LU 분해 기반 det:         {det_lu:.10f}")
+        same = abs(det_adj - det_gj) < 1e-7 and abs(det_adj - det_lu) < 1e-7
+        if same:
+            print("\n그 세 방법으로 얻은 행렬식이 동일합니다.")
+        else:
+            print("\n세 방법으로 계산한 행렬식이 서로 다릅니다.")
+    except Exception as e:
+        print(f"\n행렬식 계산 실패: {e}")
+
+    if inv_adj is not None and inv_gj is not None:
+        print("\n✅ 행렬식 방식과 가우스-조던 결과가 동일합니다." if matrices_equal(inv_adj, inv_gj, tol=1e-7) else "\n⚠️ 행렬식 방식과 가우스-조던 결과가 서로 다릅니다.")
+    if inv_adj is not None and inv_lu is not None:
+        print("✅ 행렬식 방식과 LU 결과가 동일합니다." if matrices_equal(inv_adj, inv_lu, tol=1e-7) else "⚠️ 행렬식 방식과 LU 결과가 서로 다릅니다.")
+    if inv_gj is not None and inv_lu is not None:
+        print("✅ 가우스-조던과 LU 결과가 동일합니다." if matrices_equal(inv_gj, inv_lu, tol=1e-7) else "⚠️ 가우스-조던과 LU 결과가 서로 다릅니다.")
+    if sum(x is not None for x in [inv_adj, inv_gj, inv_lu]) < 2:
+        print("\n비교 불가: 두 방법 이상이 실패했습니다.")
 
 if __name__ == "__main__":
     main()
