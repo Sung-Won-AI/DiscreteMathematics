@@ -1,0 +1,111 @@
+from copy import deepcopy
+
+EPS = 1e-10
+
+def input_matrix():
+    n = int(input().strip())
+    A = []
+    for _ in range(n):
+        row = list(map(float, input().strip().split()))
+        if len(row) != n:
+            raise ValueError(f"행의 원소 개수가 {n}이 아닙니다.")
+        A.append(row)
+    return A
+
+def print_matrix(M, name=None, fmt="{:10.6f}"):
+    if name:
+        print(f"\n[{name}]")
+    for r in M:
+        print(" ".join(fmt.format(x) for x in r))
+
+def minor_matrix(A, r, c):
+    return [row[:c] + row[c+1:] for i, row in enumerate(A) if i != r]
+
+def determinant(A):
+    n = len(A)
+    if n == 1:
+        return A[0][0]
+    if n == 2:
+        return A[0][0]*A[1][1] - A[0][1]*A[1][0]
+    det = 0.0
+    for j in range(n):
+        s = -1 if j % 2 else 1
+        det += s * A[0][j] * determinant(minor_matrix(A, 0, j))
+    return det
+
+def transpose(M):
+    return [list(row) for row in zip(*M)]
+
+def cofactor_matrix(A):
+    n = len(A)
+    C = [[0.0]*n for _ in range(n)]
+    for i in range(n):
+        for j in range(n):
+            s = -1 if (i + j) % 2 else 1
+            C[i][j] = s * determinant(minor_matrix(A, i, j))
+    return C
+
+def inverse_via_adjugate(A):
+    detA = determinant(A)
+    if abs(detA) < EPS:
+        raise ValueError("역행렬이 존재하지 않습니다 (determinant = 0).")
+    C = cofactor_matrix(A)
+    Adj = transpose(C)
+    n = len(A)
+    return [[Adj[i][j] / detA for j in range(n)] for i in range(n)]
+
+def inverse_via_gauss_jordan(A):
+    n = len(A)
+    M = [row[:] + [1.0 if i == j else 0.0 for j in range(n)] for i, row in enumerate(deepcopy(A))]
+    for col in range(n):
+        pivot_row = max(range(col, n), key=lambda r: abs(M[r][col]))
+        if abs(M[pivot_row][col]) < EPS:
+            raise ValueError("역행렬이 존재하지 않습니다 (가우스-조던 피벗=0).")
+        if pivot_row != col:
+            M[col], M[pivot_row] = M[pivot_row], M[col]
+        pivot = M[col][col]
+        for k in range(2*n):
+            M[col][k] /= pivot
+        for r in range(n):
+            if r == col:
+                continue
+            f = M[r][col]
+            for k in range(2*n):
+                M[r][k] -= f * M[col][k]
+    return [row[n:] for row in M]
+
+def matrices_equal(A, B, tol=1e-7):
+    if len(A) != len(B) or len(A[0]) != len(B[0]):
+        return False
+    n, m = len(A), len(A[0])
+    for i in range(n):
+        for j in range(m):
+            if abs(A[i][j] - B[i][j]) > tol:
+                return False
+    return True
+
+def main():
+    try:
+        A = input_matrix()
+    except Exception as e:
+        print(f"입력 오류: {e}")
+        return
+    try:
+        inv1 = inverse_via_adjugate(A)
+        print_matrix(inv1, "행렬식(수반행렬) 방식 역행렬")
+    except Exception as e:
+        inv1 = None
+        print(f"[행렬식 방식] 실패: {e}")
+    try:
+        inv2 = inverse_via_gauss_jordan(A)
+        print_matrix(inv2, "가우스-조던 소거법 역행렬")
+    except Exception as e:
+        inv2 = None
+        print(f"[가우스-조던 방식] 실패: {e}")
+    if inv1 is not None and inv2 is not None:
+        print("\n✅ 두 방법으로 얻은 역행렬이 동일합니다." if matrices_equal(inv1, inv2, tol=1e-7) else "\n⚠️ 두 방법의 결과가 서로 다릅니다.")
+    else:
+        print("\n비교 불가: 한 방법 이상에서 역행렬을 구하지 못했습니다.")
+
+if __name__ == "__main__":
+    main()
