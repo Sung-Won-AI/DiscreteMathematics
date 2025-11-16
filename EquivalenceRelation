@@ -93,12 +93,23 @@ def transitive_closure(matrix):
                         new[i][j] = 1
     return new
 
+def print_relation_pairs(matrix, name="R"):
+    pairs = []
+    for i in range(N):
+        for j in range(N):
+            if matrix[i][j] == 1:
+                pairs.append((i + 1, j + 1))
+    formatted = ", ".join(f"({a}, {b})" for a, b in pairs)
+    print(f"{name} = {{{formatted}}}")
+
 def main():
     rel = input_matrix()
 
     print("\n[원래 관계 행렬]:")
     print_matrix(rel)
     print_equivalence_result(rel, "원래 관계")
+    print("\n[원래 관계 (집합 표현)]:")
+    print_relation_pairs(rel, "R")
 
     original = [row[:] for row in rel]
 
